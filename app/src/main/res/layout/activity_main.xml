@@ -7,14 +7,74 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <TextView
-        android:id="@+id/resultText"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
-        android:background="#80000000"
-        android:padding="20dp"
-        android:text="Point camera at bill..."
-        android:textColor="#FFFFFF"
-        android:textSize="18sp" />
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:background="#A0000000"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/invalidHistoryText"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="10dp"
+                android:scrollbars="vertical"
+                android:text="OBSERVADOS (IZQ):"
+                android:textColor="#FF0000"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="#40FFFFFF" />
+
+            <TextView
+                android:id="@+id/validHistoryText"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="10dp"
+                android:scrollbars="vertical"
+                android:text="VALIDOS (DER):"
+                android:textColor="#00FF00"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#80000000"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/resultText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:padding="15dp"
+                android:text="Point camera at bill..."
+                android:textColor="#FFFFFF"
+                android:fontFamily="@font/source_code_pro"
+                android:textSize="14sp" />
+
+            <Switch
+                android:id="@+id/debugSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="10dp"
+                android:text="Debug"
+                android:textColor="#FFFFFF"
+                android:checked="false" />
+        </LinearLayout>
+    </LinearLayout>
 </RelativeLayout>

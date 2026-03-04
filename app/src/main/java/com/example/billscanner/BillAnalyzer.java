@@ -12,67 +12,124 @@ public class BillAnalyzer {
         RANGES.put("50", new long[][]{{77100001L, 77550000L}, {108050001L, 108500000L}});
     }
 
-    public String processText(Text visionText) {
+    public static class DetectedSerial {
+        public final String fullText;
+        public final String serialDigits;
+        public final boolean isObserved;
+
+        public DetectedSerial(String fullText, String serialDigits, boolean isObserved) {
+            this.fullText = fullText;
+            this.serialDigits = serialDigits;
+            this.isObserved = isObserved;
+        }
+    }
+
+    public static class AnalysisResult {
+        public final String status;
+        public final List<DetectedSerial> detectedSerials;
+
+        public AnalysisResult(String status, List<DetectedSerial> detectedSerials) {
+            this.status = status;
+            this.detectedSerials = detectedSerials;
+        }
+    }
+
+    public AnalysisResult analyze(Text visionText, boolean showDebug) {
         String detectedDenom = null;
-        List<String> serialsFound = new ArrayList<>();
+        List<String> allSerialsFound = new ArrayList<>();
+        List<DetectedSerial> historyEntries = new ArrayList<>();
         boolean seriesBFound = false;
         StringBuilder debugLog = new StringBuilder("DEBUG: ");
 
         for (Text.TextBlock block : visionText.getTextBlocks()) {
             for (Text.Line line : block.getLines()) {
                 String rawText = line.getText().toUpperCase().trim();
-                debugLog.append("[").append(rawText).append("] ");
-
-                // 1. Detect Denomination
                 if (rawText.contains("DIEZ") || rawText.contains("10")) detectedDenom = "10";
                 else if (rawText.contains("VEINTE") || rawText.contains("20")) detectedDenom = "20";
                 else if (rawText.contains("50") || rawText.contains("CINCUENTA")) detectedDenom = "50";
-
-                // 2. Robust Series B Detection 
-                // Checks for standalone "B", "SERIE B", or strings ending/starting with B
+                
                 if (rawText.matches(".*\\bB\\b.*") || rawText.contains("SERIE B")) {
                     seriesBFound = true;
-                }
-
-                // 3. Serial Number Detection (8 to 9 digits)
-                // We also replace common OCR errors: 'O' -> '0', 'I'/'L' -> '1'
-                String cleanDigits = rawText.replace("O", "0").replace("I", "1").replace("L", "1");
-                Matcher m = Pattern.compile("\\d{8,9}").matcher(cleanDigits);
-                while (m.find()) {
-                    serialsFound.add(m.group());
                 }
             }
         }
 
-        // Build the display message
+        for (Text.TextBlock block : visionText.getTextBlocks()) {
+            for (Text.Line line : block.getLines()) {
+                String rawText = line.getText().toUpperCase().trim();
+                if (showDebug) debugLog.append("[").append(rawText).append("] ");
+
+                String cleanText = rawText.replace("O", "0").replace("I", "1").replace("L", "1");
+                
+                Matcher mFull = Pattern.compile("(\\d{9})\\s*([A-Z])").matcher(cleanText);
+                while (mFull.find()) {
+                    String serial = mFull.group(1);
+                    String letter = mFull.group(2);
+                    
+                    if (detectedDenom != null) {
+                        boolean isObserved = checkIfObserved(serial, detectedDenom);
+                        String entry = detectedDenom + " BS - " + serial + " " + letter;
+                        historyEntries.add(new DetectedSerial(entry, serial, isObserved));
+                    }
+                }
+
+                Matcher m = Pattern.compile("\\d{8,9}").matcher(cleanText);
+                while (m.find()) {
+                    allSerialsFound.add(m.group());
+                }
+            }
+        }
+
         StringBuilder result = new StringBuilder();
-        
         if (detectedDenom != null) {
             result.append("VALOR: ").append(detectedDenom).append(" Bs\n");
         } else {
             result.append("Buscando Denominación...\n");
         }
-
         result.append("SERIE B: ").append(seriesBFound ? "SI" : "NO").append("\n");
-        result.append("SERIALES: ").append(serialsFound.toString()).append("\n");
+        if (showDebug) result.append("SERIALES: ").append(allSerialsFound.toString()).append("\n");
 
-        // Logic check
-        if (detectedDenom != null && seriesBFound && !serialsFound.isEmpty()) {
-            long[][] denomRanges = RANGES.get(detectedDenom);
-            for (String s : serialsFound) {
-                try {
-                    long val = Long.parseLong(s);
-                    for (long[] r : denomRanges) {
-                        if (val >= r[0] && val <= r[1]) {
-                            return "⚠️ ALERTA: " + s + " OBSERVADO\n" + result.toString();
-                        }
-                    }
-                } catch (Exception e) { /* ignore parse errors */ }
+        String status;
+        if (detectedDenom != null && seriesBFound && !allSerialsFound.isEmpty()) {
+            boolean observed = false;
+            String foundS = "";
+            for (String s : allSerialsFound) {
+                if (checkIfObserved(s, detectedDenom)) {
+                    observed = true;
+                    foundS = s;
+                    break;
+                }
             }
-            return "✅ VALIDO\n" + result.toString();
+            if (observed) {
+                status = "⚠️ ALERTA: " + foundS + " OBSERVADO\n" + result.toString();
+            } else {
+                status = "✅ VALIDO\n" + result.toString();
+            }
+        } else {
+            status = result.toString();
+        }
+        
+        if (showDebug) {
+            status += "\n" + (debugLog.length() > 100 ? debugLog.substring(0, 100) + "..." : debugLog.toString());
         }
 
-        // If something is missing, show the debug raw data at the bottom
-        return result.toString() + "\n" + (debugLog.length() > 60 ? debugLog.substring(0, 60) + "..." : debugLog.toString());
+        return new AnalysisResult(status, historyEntries);
+    }
+
+    private boolean checkIfObserved(String serial, String denom) {
+        long[][] denomRanges = RANGES.get(denom);
+        if (denomRanges == null) return false;
+        try {
+            long val = Long.parseLong(serial);
+            for (long[] r : denomRanges) {
+                if (val >= r[0] && val <= r[1]) return true;
+            }
+        } catch (Exception e) {}
+        return false;
+    }
+
+    // Deprecated but kept for compatibility if needed
+    public String processText(Text visionText) {
+        return analyze(visionText, false).status;
     }
 }

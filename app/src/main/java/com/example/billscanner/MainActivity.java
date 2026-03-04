@@ -3,6 +3,8 @@ package com.example.billscanner;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.text.method.ScrollingMovementMethod;
+import android.widget.Switch;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,11 +17,22 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
     private PreviewView viewFinder;
     private TextView resultText;
+    private TextView validHistoryText;
+    private TextView invalidHistoryText;
+    private Switch debugSwitch;
     private BillAnalyzer billAnalyzer;
+    
+    private final Set<String> processedSerials = new HashSet<>();
+    private final List<String> validDisplayList = new ArrayList<>();
+    private final List<String> invalidDisplayList = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -28,7 +41,14 @@ public class MainActivity extends AppCompatActivity {
 
         viewFinder = findViewById(R.id.viewFinder);
         resultText = findViewById(R.id.resultText);
-        billAnalyzer = new BillAnalyzer(); // Uses your logic from earlier
+        validHistoryText = findViewById(R.id.validHistoryText);
+        invalidHistoryText = findViewById(R.id.invalidHistoryText);
+        debugSwitch = findViewById(R.id.debugSwitch);
+        
+        validHistoryText.setMovementMethod(new ScrollingMovementMethod());
+        invalidHistoryText.setMovementMethod(new ScrollingMovementMethod());
+        
+        billAnalyzer = new BillAnalyzer();
 
         if (allPermissionsGranted()) {
             startCamera();
@@ -56,9 +76,24 @@ public class MainActivity extends AppCompatActivity {
                     TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
                         .process(inputImage)
                         .addOnSuccessListener(visionText -> {
-                            // Update UI with the result from your validation logic
-                            String status = billAnalyzer.processText(visionText);
-                            resultText.setText(status);
+                            BillAnalyzer.AnalysisResult result = billAnalyzer.analyze(visionText, debugSwitch.isChecked());
+                            resultText.setText(result.status);
+                            
+                            boolean historyChanged = false;
+                            for (BillAnalyzer.DetectedSerial ds : result.detectedSerials) {
+                                if (processedSerials.add(ds.serialDigits)) {
+                                    if (ds.isObserved) {
+                                        invalidDisplayList.add(ds.fullText);
+                                    } else {
+                                        validDisplayList.add(ds.fullText);
+                                    }
+                                    historyChanged = true;
+                                }
+                            }
+                            
+                            if (historyChanged) {
+                                updateHistoryUI();
+                            }
                         })
                         .addOnCompleteListener(task -> image.close());
                 });
@@ -66,6 +101,20 @@ public class MainActivity extends AppCompatActivity {
                 cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalysis);
             } catch (Exception e) { e.printStackTrace(); }
         }, ContextCompat.getMainExecutor(this));
+    }
+
+    private void updateHistoryUI() {
+        StringBuilder validBuilder = new StringBuilder("VALIDOS (DER):\n");
+        for (String s : validDisplayList) {
+            validBuilder.append("• ").append(s).append("\n");
+        }
+        validHistoryText.setText(validBuilder.toString());
+
+        StringBuilder invalidBuilder = new StringBuilder("OBSERVADOS (IZQ):\n");
+        for (String s : invalidDisplayList) {
+            invalidBuilder.append("• ").append(s).append("\n");
+        }
+        invalidHistoryText.setText(invalidBuilder.toString());
     }
 
     private boolean allPermissionsGranted() {
