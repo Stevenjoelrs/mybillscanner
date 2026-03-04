@@ -28,8 +28,11 @@ public class MainActivity extends AppCompatActivity {
     private TextView validHistoryText;
     private TextView invalidHistoryText;
     private Switch debugSwitch;
+    private Switch cameraSwitch;
     private BillAnalyzer billAnalyzer;
-    
+    private ProcessCameraProvider cameraProvider;
+    private boolean useFrontCamera = false;
+
     private final Set<String> processedSerials = new HashSet<>();
     private final List<String> validDisplayList = new ArrayList<>();
     private final List<String> invalidDisplayList = new ArrayList<>();
@@ -44,11 +47,17 @@ public class MainActivity extends AppCompatActivity {
         validHistoryText = findViewById(R.id.validHistoryText);
         invalidHistoryText = findViewById(R.id.invalidHistoryText);
         debugSwitch = findViewById(R.id.debugSwitch);
-        
+        cameraSwitch = findViewById(R.id.cameraSwitch);
+
         validHistoryText.setMovementMethod(new ScrollingMovementMethod());
         invalidHistoryText.setMovementMethod(new ScrollingMovementMethod());
         
         billAnalyzer = new BillAnalyzer();
+
+        cameraSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            useFrontCamera = !isChecked;
+            restartCamera();
+        });
 
         if (allPermissionsGranted()) {
             startCamera();
@@ -61,56 +70,73 @@ public class MainActivity extends AppCompatActivity {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
         cameraProviderFuture.addListener(() -> {
             try {
-                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
-                Preview preview = new Preview.Builder().build();
-                preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
-
-                ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build();
-
-                imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(this), image -> {
-                    @SuppressWarnings("UnsafeOptInUsageError")
-                    InputImage inputImage = InputImage.fromMediaImage(image.getImage(), image.getImageInfo().getRotationDegrees());
-                    
-                    TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                        .process(inputImage)
-                        .addOnSuccessListener(visionText -> {
-                            BillAnalyzer.AnalysisResult result = billAnalyzer.analyze(visionText, debugSwitch.isChecked());
-                            resultText.setText(result.status);
-                            
-                            boolean historyChanged = false;
-                            for (BillAnalyzer.DetectedSerial ds : result.detectedSerials) {
-                                if (processedSerials.add(ds.serialDigits)) {
-                                    if (ds.isObserved) {
-                                        invalidDisplayList.add(ds.fullText);
-                                    } else {
-                                        validDisplayList.add(ds.fullText);
-                                    }
-                                    historyChanged = true;
-                                }
-                            }
-                            
-                            if (historyChanged) {
-                                updateHistoryUI();
-                            }
-                        })
-                        .addOnCompleteListener(task -> image.close());
-                });
-
-                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalysis);
+                cameraProvider = cameraProviderFuture.get();
+                bindCameraPreview();
             } catch (Exception e) { e.printStackTrace(); }
         }, ContextCompat.getMainExecutor(this));
     }
 
+    private void restartCamera() {
+        if (cameraProvider != null) {
+            cameraProvider.unbindAll();
+            bindCameraPreview();
+        }
+    }
+
+    private void bindCameraPreview() {
+        if (cameraProvider == null) return;
+
+        Preview preview = new Preview.Builder().build();
+        preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
+
+        ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build();
+
+        imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(this), image -> {
+            @SuppressWarnings("UnsafeOptInUsageError")
+            InputImage inputImage = InputImage.fromMediaImage(image.getImage(), image.getImageInfo().getRotationDegrees());
+
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                .process(inputImage)
+                .addOnSuccessListener(visionText -> {
+                    BillAnalyzer.AnalysisResult result = billAnalyzer.analyze(visionText, debugSwitch.isChecked());
+                    resultText.setText(result.status);
+
+                    boolean historyChanged = false;
+                    for (BillAnalyzer.DetectedSerial ds : result.detectedSerials) {
+                        if (processedSerials.add(ds.serialDigits)) {
+                            if (ds.isObserved) {
+                                invalidDisplayList.add(ds.fullText);
+                            } else {
+                                validDisplayList.add(ds.fullText);
+                            }
+                            historyChanged = true;
+                        }
+                    }
+
+                    if (historyChanged) {
+                        updateHistoryUI();
+                    }
+                })
+                .addOnCompleteListener(task -> image.close());
+        });
+
+        CameraSelector cameraSelector = useFrontCamera
+            ? CameraSelector.DEFAULT_FRONT_CAMERA
+            : CameraSelector.DEFAULT_BACK_CAMERA;
+
+        cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
+    }
+
     private void updateHistoryUI() {
-        StringBuilder validBuilder = new StringBuilder("VALIDOS (DER):\n");
+        StringBuilder validBuilder = new StringBuilder("VÁLIDOS:\n");
         for (String s : validDisplayList) {
             validBuilder.append("• ").append(s).append("\n");
         }
         validHistoryText.setText(validBuilder.toString());
 
-        StringBuilder invalidBuilder = new StringBuilder("OBSERVADOS (IZQ):\n");
+        StringBuilder invalidBuilder = new StringBuilder("OBSERVADOS:\n");
         for (String s : invalidDisplayList) {
             invalidBuilder.append("• ").append(s).append("\n");
         }

@@ -81,36 +81,42 @@ public class BillAnalyzer {
         }
 
         StringBuilder result = new StringBuilder();
-        if (detectedDenom != null) {
-            result.append("VALOR: ").append(detectedDenom).append(" Bs\n");
-        } else {
-            result.append("Buscando Denominación...\n");
-        }
-        result.append("SERIE B: ").append(seriesBFound ? "SI" : "NO").append("\n");
-        if (showDebug) result.append("SERIALES: ").append(allSerialsFound.toString()).append("\n");
-
-        String status;
-        if (detectedDenom != null && seriesBFound && !allSerialsFound.isEmpty()) {
-            boolean observed = false;
-            String foundS = "";
-            for (String s : allSerialsFound) {
-                if (checkIfObserved(s, detectedDenom)) {
-                    observed = true;
-                    foundS = s;
-                    break;
-                }
-            }
-            if (observed) {
-                status = "⚠️ ALERTA: " + foundS + " OBSERVADO\n" + result.toString();
-            } else {
-                status = "✅ VALIDO\n" + result.toString();
-            }
-        } else {
-            status = result.toString();
-        }
-        
         if (showDebug) {
+            if (detectedDenom != null) {
+                result.append("VALOR: ").append(detectedDenom).append(" Bs\n");
+            } else {
+                result.append("Buscando Denominación...\n");
+            }
+            result.append("SERIE B: ").append(seriesBFound ? "SI" : "NO").append("\n");
+
+            result.append("SERIALES: ").append(allSerialsFound.toString()).append("\n");
+        }
+
+        String status = "";
+
+        if (showDebug) {
+            if (detectedDenom != null && seriesBFound && !allSerialsFound.isEmpty()) {
+                boolean observed = false;
+                String foundS = "";
+                for (String s : allSerialsFound) {
+                    if (checkIfObserved(s, detectedDenom)) {
+                        observed = true;
+                        foundS = s;
+                        break;
+                    }
+                }
+                if (observed) {
+                    status = "⚠️ ALERTA: " + foundS + " OBSERVADO\n" + result.toString();
+                } else {
+                    status = "✅ VALIDO\n" + result.toString();
+                }
+            } else {
+                status = result.toString();
+            }
+
+            //if (showDebug) {
             status += "\n" + (debugLog.length() > 100 ? debugLog.substring(0, 100) + "..." : debugLog.toString());
+            //}
         }
 
         return new AnalysisResult(status, historyEntries);
