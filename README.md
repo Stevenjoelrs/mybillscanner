@@ -8,6 +8,5 @@ Build debug APK with
 Generate test bills
 ```bash
 python generate_test_bills.py > bills.tex
-pdflatex bills.tex 
-
+lualatex bills.tex
 ```

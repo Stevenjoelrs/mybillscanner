@@ -2,7 +2,7 @@
 import random
 
 # ====== Configuration ======
-# Invalid ranges per denomination (from the problem)
+# Invalid ranges per denomination
 INVALID_RANGES = {
     10: [(67250001, 67700000), (76310012, 85139995)],
     20: [(87280145, 91646549), (118700001, 119600000)],
@@ -16,8 +16,16 @@ COUNTS = {
     50: {'valid': 8, 'invalid': 8},
 }
 
-# Scale factor for two bills per row on A4
-SCALE = 0.65
+SCALE = 0.65  # Scale factor for two bills per row
+
+# Font file paths - UPDATE THESE PATHS TO MATCH YOUR SYSTEM
+# Option A: If fonts are in the same directory as your .tex file
+FIRA_EXTRABOLD_PATH = "FiraSans-ExtraBold.ttf"
+GOOGLE_SANS_REGULAR_PATH = "GoogleSansCode-Regular.ttf"
+
+# Option B: If using system fonts (macOS/Linux paths as examples)
+# FIRA_EXTRABOLD_PATH = "/usr/local/share/fonts/FiraSans-ExtraBold.ttf"
+# GOOGLE_SANS_REGULAR_PATH = "~/Library/Fonts/GoogleSans-Regular.ttf"  # macOS example
 
 # ====== Helper functions ======
 def is_invalid(denom, serial):
@@ -30,7 +38,7 @@ def is_invalid(denom, serial):
 def generate_valid_serial(denom):
     """Generate a random 9-digit serial not in any invalid range."""
     while True:
-        serial = random.randint(1, 999999999)  # 1 to 9 digits (we'll pad)
+        serial = random.randint(1, 999999999)
         if not is_invalid(denom, serial):
             return serial
 
@@ -59,32 +67,54 @@ for denom, counts in COUNTS.items():
         serial = generate_invalid_serial(denom)
         bills.append((denom, format_serial(serial), 'B', 'invalid'))
 
-# Shuffle the list to mix valid and invalid
+# Shuffle
 random.shuffle(bills)
 
-# ====== Generate LaTeX code ======
+# ====== Generate LaTeX code with fontspec ======
 latex_preamble = r"""\documentclass[a4paper]{article}
 \usepackage{tikz}
 \usepackage{longtable}
 \usepackage{geometry}
 \geometry{margin=1cm}
 
+% Use fontspec with XeLaTeX or LuaLaTeX
+\usepackage{fontspec}
+
+% Load fonts from files (adjust paths as needed)
+\newfontfamily\denomfont[
+    Path = ./,          % Look in current directory - change if needed
+    Extension = .ttf,
+    UprightFont = *-ExtraBold,
+    BoldFont = *-ExtraBold  % Same font for bold (no separate bold needed)
+]{FiraSans}
+
+\newfontfamily\serialfont[
+    Path = ./,
+    Extension = .ttf,
+    UprightFont = *-Regular,
+    BoldFont = *-Regular    % Same for bold
+]{GoogleSansCode}
+
+% Fallback for compilation without fonts (optional)
+\newcommand{\denomstyle}[1]{{\denomfont #1}}
+\newcommand{\serialstyle}[1]{{\serialfont #1}}
+
 % Command to draw a single bill
-% #1 = denomination, #2 = serial (9 digits), #3 = series, #4 = validity (valid/invalid)
+% #1 = denomination, #2 = serial (9 digits), #3 = series, #4 = validity (1=valid,0=invalid)
 \newcommand{\drawbill}[4]{%
   \begin{tikzpicture}
     \draw (0,0) rectangle (14,7);
     % top left small denomination
-    \node[anchor=north west] at (1,6.5) {\small #1};
+    \node[anchor=north west] at (1,6.5) {\small\denomstyle{#1}};
     % bottom left small denomination
-    \node[anchor=south west] at (1,1.0) {\small #1};
+    \node[anchor=south west] at (1,1.0) {\small\denomstyle{#1}};
     % bottom left serial + series
-    \node[anchor=south west] at (1,0.5) {#2 #3};
+    \node[anchor=south west] at (1,0.5) {\serialstyle{#2 #3}};
     % top right serial + series
-    \node[anchor=north east] at (13,6.5) {#2 #3};
-    % bottom right large denomination
-    \node[anchor=south east] at (13,0.5) {\Huge #1};
-    % validity label (tiny, gray) – comment out if not wanted
+    \node[anchor=north east] at (13,6.5) {\serialstyle{#2 #3}};
+    % bottom right large denomination (using the bold denomination font)
+    \node[anchor=south east] at (13,0.5) {{\fontsize{50}{60}\selectfont\denomstyle{#1}}};
+    % validity label
     \ifnum#4=1
       \node[anchor=south, gray!50] at (7,0.2) {\tiny VALID};
     \else
@@ -108,23 +138,16 @@ latex_footer = r"""
 \end{document}
 """
 
-# Build the table rows
+# Build table rows
 rows = []
 for i, (denom, serial, series, validity) in enumerate(bills):
-    # validity as 1 for valid, 0 for invalid (for the \ifnum in drawbill)
     val_code = 1 if validity == 'valid' else 0
     bill_code = f"\\scalebox{{{SCALE}}}{{\\drawbill{{{denom}}}{{{serial}}}{{{series}}}{{{val_code}}}}}"
     if i % 2 == 0:
-        # First column
         rows.append(bill_code + " &")
     else:
-        # Second column with line break
         rows.append(bill_code + " \\\\")
 
-# Join rows with newlines
-table_body = "\n".join(rows)
-
-# Output full LaTeX document
 print(latex_preamble)
-print(table_body)
+print("\n".join(rows))
 print(latex_footer)
